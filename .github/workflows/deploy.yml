@@ -1,4 +1,4 @@
-name: Deploy Website to EC2
+name: Copy Files to Remote Server
 
 on:
   push:
@@ -9,24 +9,27 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      SERVER_IP: ${{ secrets.SERVER_IP }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+      TARGET_PATH: "/var/www/html/"
+
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: Install sshpass and rsync
-      run: sudo apt-get install -y sshpass rsync
+      - name: Install sshpass and rsync
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass rsync
 
-    - name: Deploy to EC2
-      run: |
-        # Create target directory if not exists
-        sshpass -p "${{ secrets.EC2_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
-        ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${{ secrets.EC2_TARGET_DIR }}"
+      - name: Copy Files using rsync
+        run: |
+          rsync -avz --delete \
+            -e "sshpass -p \"$SERVER_PASSWORD\" ssh -o StrictHostKeyChecking=no" \
+            index.html "$SERVER_USER@$SERVER_IP:$TARGET_PATH"
 
-        # Sync website files (only index.html in this example)
-        sshpass -p "${{ secrets.EC2_PASSWORD }}" rsync -avz --delete \
-        -e "ssh -o StrictHostKeyChecking=no" \
-        index.html ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_TARGET_DIR }}
-
-        # Restart Apache on EC2
-        sshpass -p "${{ secrets.EC2_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
-        ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo systemctl restart apache2"
+      - name: Restart apache2 on Server
+        run: |
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_IP" "sudo systemctl restart apache2"
